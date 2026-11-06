@@ -1,13 +1,13 @@
 # EdgeStream
 
-EdgeStream is a multithreaded, real-time video ingestion and telemetry engine written in modern C++20. It      
-decouples high-throughput video decoding from consumer processing using a custom, bounded thread-safe ring     
+EdgeStream is a multithreaded, real-time video ingestion and telemetry engine written in modern C++20. It 
+decouples high-throughput video decoding from consumer processing using a custom, bounded thread-safe ring 
 buffer, persisting operational pipeline metrics into an embedded SQLite database.
 
 
 ## Architecture Overview
 
-The system implements an asynchronous Producer-Consumer architecture designed to eliminate I/O blocking and    
+The system implements an asynchronous Producer-Consumer architecture designed to eliminate I/O blocking and 
 prevent heap allocation churn during high-frequency frame streaming.
 
 ```mermaid
@@ -26,20 +26,19 @@ flowchart TD
 1. **Thread-Safe Ring Buffer (`include/ringBuffer.hpp`)**
    * Header-only template implementation supporting configurable capacity and producer counts.
    * Internal contiguous array storage eliminating dynamic allocations inside the frame ingestion loop.        
-   * Synchronization via `std::mutex` and `std::condition_variable` with predicate guards against spurious     
-   wakeups.
+   * Synchronization via `std::mutex` and `std::condition_variable` with predicate guards against spurious wakeups.
    * State-aware shutdown protocol (`stop()`) enabling immediate, deadlock-free thread termination.            
 
 2. **Ingestion & Processing Pipeline (`main.cpp`)**
-   * **Producer Worker:** Interacts with video backends via OpenCV (`cv::VideoCapture`), pushing frames through
-   move semantics (`std::move`).
+   * **Producer Worker:** Interacts with video backends via OpenCV (`cv::VideoCapture`), pushing frames through move 
+   semantics (`std::move`).
    * **Consumer Worker:** Consumes frames, renders display outputs, computes instantaneous throughput metrics, 
    and streams telemetry records.
    * Dual input mode: Supports offline video files or real-time hardware camera streams (`device 0`).          
 
 3. **Embedded Telemetry Layer (`src/database.cpp`, `include/database.hpp`)**
    * Native C++ RAII wrapper encapsulating the SQLite3 C API.
-   * Records sequential frame indices, millisecond-precision epoch timestamps, instantaneous queue occupancy,  
+   * Records sequential frame indices, millisecond-precision epoch timestamps, instantaneous queue occupancy, 
    and instantaneous frame rates.
    * Generates summary statistical reports (minimum, maximum, and average values for FPS and queue sizes) upon 
    pipeline termination.
@@ -82,15 +81,15 @@ invariants, multi-threaded concurrency safety, and database transactional integr
 
 1. RingBufferTest.InitialStateIsEmpty: Verifies default initialization and queue size reporting.
 2. RingBufferTest.MaintainsStrictFIFOOrder: Verifies strict first-in, first-out sequence ordering.
-3. RingBufferTest.PopReturnsFalseWhenEmptyAndProducersFinished: Asserts deterministic termination behavior upon  
-   producer completion.
-4. RingBufferConcurrencyTest.StressTestNoDataLossAcrossProducers: Stress-tests 2 concurrent producers (1,000     
-   total items) against 1 consumer to verify zero race conditions or dropped elements.
-5. RingBufferConcurrencyTest.GracefulShutdownUnblocksConsumer: Asserts that stop() wakes sleeping consumer       
-   threads in under 100 milliseconds without deadlock.
+3. RingBufferTest.PopReturnsFalseWhenEmptyAndProducersFinished: Asserts deterministic termination behavior upon 
+producer completion.
+4. RingBufferConcurrencyTest.StressTestNoDataLossAcrossProducers: Stress-tests 2 concurrent producers (1,000 
+total items) against 1 consumer to verify zero race conditions or dropped elements.
+5. RingBufferConcurrencyTest.GracefulShutdownUnblocksConsumer: Asserts that stop() wakes sleeping consumer 
+threads in under 100 milliseconds without deadlock.
 6. DatabaseTest.TableCreationAndInsertReturnsSuccess: Tests schema initialization and parameter binding.
-7. DatabaseTest.AggregateMetricsCalculationRunsCleanly: Validates SQL aggregation functions across persisted     
-   telemetry rows.
+7. DatabaseTest.AggregateMetricsCalculationRunsCleanly: Validates SQL aggregation functions across persisted telemetry 
+rows.
 
 All unit and integration tests execute with zero failures.
 
