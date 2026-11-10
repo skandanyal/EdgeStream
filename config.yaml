@@ -1,0 +1,31 @@
+database:
+  path: "database/EdgeStream_data.db"
+
+model:
+  path: "models/yolov8s.onnx"
+  backend: "CUDA"
+
+buffer_configs:
+  capacity: 50
+  num_producers: 1
+
+image_configs:
+  image_path: "assets/cats2."
+  image_width: 640
+  image_height: 640
+
+pipeline_configs:
+  score_threshold: 0.3
+  nms_threshold: 0.45
+  confidence_threshold: 0.3
+
+zone_configs:
+  min_dwell_time_seconds: 3.0
+  polygon:
+    - [150, 150]
+    - [1000, 150]
+    - [1000, 2000]
+    - [150, 2000]
+
+database_configs:
+  database_path: "database/EdgeStream_data.db"

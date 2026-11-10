@@ -3,3 +3,6 @@ cmake-build-release/
 database/
 .idea/
 instructions.md
+onnxruntime/
+output.jpg
+*.pt

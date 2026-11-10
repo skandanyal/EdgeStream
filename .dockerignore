@@ -6,4 +6,5 @@ build
 database/*.db
 *.o
 *.a
-*.so
+*.pt
+!onnxruntime/**

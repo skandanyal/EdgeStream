@@ -7,12 +7,13 @@
 
 class Database {
 private:
-  sqlite3 *db = nullptr;
-  int exit;
-  char *err_msg;
-  std::string query;
+    sqlite3 *db = nullptr;
+    std::string db_name;
+    int exit;
+    char *err_msg;
+    std::string query;
 
-  int create_table();
+    int create_table();
 
 public:
   /*
@@ -24,16 +25,19 @@ public:
    *     5. destructor
    */
 
-  explicit Database(const std::string &db_name = "database/EdgeStream_data.db");
+    explicit Database(const std::string &db_name = "database/EdgeStream_data.db");
 
-  int insert_telemetry(int frame_no, long long timestamp_ms, int queue_size,
-                       float fps);
+    // Automatically captures current system timestamp in ms to keep main/consumer clean
+    int log_frame(int frame_no, int queue_size, float fps, int dropped_frames = 0);
 
-  int display_telemetry();
+    int insert_telemetry(int frame_no, long long timestamp_ms, int queue_size,
+                        float fps, int dropped_frames = 0);
 
-  int display_telemetry_metrics();
+    int display_telemetry();
 
-  ~Database();
+    int display_telemetry_metrics();
+
+    ~Database();
 };
 
 #endif

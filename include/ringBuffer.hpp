@@ -4,87 +4,110 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <vector>
+#include <cstdint>
+#include <stdexcept>
 
-template <typename T, int Capacity, int Num_Producers> class RingBuffer {
+template <typename T>
+class RingBuffer {
 private:
-  T buffer[Capacity];
-  int head_ = 0;  // points to oldest val
-  int tail_ = 0;  // points to newest val
-  int count_ = 0; // number of eles.
+    std::vector<T> buffer_;
+    const size_t capacity_;
+    size_t head_ = 0;  // points to oldest val
+    size_t tail_ = 0;  // points to newest val
+    size_t count_ = 0; // number of elements
 
-  std::mutex mt;
-  std::condition_variable cv;
-  int active_producers;
-  std::atomic<bool> stopped_ = false;
+    std::mutex mt;
+    std::condition_variable cv;
+    int active_producers;
+    std::atomic<bool> stopped_{false};
+    std::atomic<uint64_t> dropped_frames_{0};
 
 public:
-  RingBuffer() {
-    static_assert(Capacity > 0, "Buffer size should be greater than 0.\n");
-    static_assert(Num_Producers > 0,
-                  "Number of threads should be greater than 0.\n");
-
-    active_producers = Num_Producers;
-  }
-
-  bool pop(T &val) {
-    std::unique_lock<std::mutex> lock(mt);
-
-    cv.wait(lock, [this] { return count_ > 0 || active_producers == 0 || stopped_; });
-
-    if (count_ == 0)
-      return false;
-
-    val = std::move(buffer[head_]);
-    head_ = (head_ + 1) % Capacity;
-    count_--;
-
-    lock.unlock();
-    cv.notify_all();
-
-    return true;
-  }
-
-  bool push(T &val) {
-    std::unique_lock<std::mutex> lock(mt);
-
-    cv.wait(lock, [this] { return count_ < Capacity || stopped_;});
-
-    if (stopped_) return false;
-
-    buffer[tail_] = std::move(val);
-    tail_ = (tail_ + 1) % Capacity;
-    count_++;
-
-    lock.unlock();
-    cv.notify_all();
-
-    return true;
-  }
-
-  void stop() {
-    std::unique_lock<std::mutex> lock(mt);
-    stopped_ = true;
-
-    lock.unlock();
-    cv.notify_all();
-  }
-
-  bool is_stopped() {
-    return stopped_.load();
-  }
-
-  int get_size() {
-    std::lock_guard<std::mutex> lock(mt);
-    return count_;
-  }
-
-  void thread_finished() {
-    {
-      std::lock_guard<std::mutex> lock(mt);
-      --active_producers;
+    explicit RingBuffer(size_t capacity = 50, int num_producers = 1)
+        : buffer_(capacity), capacity_(capacity), active_producers(num_producers) {
+        if (capacity_ == 0) {
+            throw std::invalid_argument("RingBuffer capacity must be greater than 0.\n");
+        }
+        if (active_producers <= 0) {
+            throw std::invalid_argument("RingBuffer num_producers must be greater than 0.\n");
+        }
     }
-    cv.notify_all();
-  }
+
+    bool pop(T &val) {
+        std::unique_lock<std::mutex> lock(mt);
+
+        cv.wait(lock, [this] { return count_ > 0 || active_producers == 0 || stopped_.load(); });
+
+        if (count_ == 0)
+          return false;
+
+        val = std::move(buffer_[head_]);
+        head_ = (head_ + 1) % capacity_;
+        count_--;
+
+        lock.unlock();
+        cv.notify_all();
+
+        return true;
+    }
+
+    bool push(T &val, bool drop_oldest = true) {
+        std::unique_lock<std::mutex> lock(mt);
+
+        if (drop_oldest && count_ == capacity_) {
+            // Overwrite / drop the oldest frame to prevent latency spikes
+            head_ = (head_ + 1) % capacity_;
+            count_--;
+            dropped_frames_.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            cv.wait(lock, [this] { return count_ < capacity_ || stopped_.load(); });
+        }
+
+        if (stopped_.load()) return false;
+
+        buffer_[tail_] = std::move(val);
+        tail_ = (tail_ + 1) % capacity_;
+        count_++;
+
+        lock.unlock();
+        cv.notify_all();
+
+        return true;
+    }
+
+    [[nodiscard]] uint64_t get_dropped_count() const {
+        return dropped_frames_.load();
+    }
+
+    void stop() {
+        std::unique_lock<std::mutex> lock(mt);
+        stopped_ = true;
+
+        lock.unlock();
+        cv.notify_all();
+    }
+
+    bool is_stopped() const {
+        return stopped_.load();
+    }
+
+    size_t get_size() {
+        std::lock_guard<std::mutex> lock(mt);
+        return count_;
+    }
+
+    size_t get_capacity() const {
+        return capacity_;
+    }
+
+    void thread_finished() {
+        {
+            std::lock_guard<std::mutex> lock(mt);
+            --active_producers;
+        }
+        cv.notify_all();
+    }
 };
 
 #endif // EDGESTREAM_RINGBUFFER_H
